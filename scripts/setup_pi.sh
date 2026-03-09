@@ -35,12 +35,28 @@ fi
 
 # ── System Update ────────────────────────────────────────────
 section "System Update"
-sudo apt-get update -qq
-sudo apt-get upgrade -y -qq || warn "Some packages couldn't upgrade — continuing anyway"
-sudo apt-get install -y -qq \
-  curl wget git python3 python3-pip python3-venv \
-  build-essential libssl-dev libffi-dev \
-  sqlite3 jq unzip htop
+
+log "Updating package lists..."
+sudo apt-get update
+
+log "Installing: curl wget git..."
+sudo apt-get install -y curl wget git \
+  || err "FAILED on: curl wget git"
+
+log "Installing: python3 python3-pip python3-venv..."
+sudo apt-get install -y python3 python3-pip python3-venv \
+  || err "FAILED on: python3 packages"
+
+log "Installing: build-essential libssl-dev libffi-dev..."
+sudo apt-get install -y build-essential libssl-dev libffi-dev \
+  || err "FAILED on: build tools"
+
+log "Installing: sqlite3 jq unzip..."
+sudo apt-get install -y sqlite3 jq unzip \
+  || err "FAILED on: sqlite3 jq unzip"
+
+log "All system packages installed"
+
 
 # ── USB SSD Setup ────────────────────────────────────────────
 section "Storage Setup"
