@@ -86,9 +86,9 @@ if [ ! -d "/home/$USER/.openclaw" ]; then
 fi
 
 # Copy our config files
-cp -r /home/$USER/openclaw-lark/config/* /home/$USER/.openclaw/config/
-cp -r /home/$USER/openclaw-lark/skills/* /home/$USER/.openclaw/skills/
-cp -r /home/$USER/openclaw-lark/memory/* /data/openclaw/workspace/
+cp -r /home/$USER/piclaw/config/* /home/$USER/.openclaw/config/
+cp -r /home/$USER/piclaw/skills/* /home/$USER/.openclaw/skills/
+cp -r /home/$USER/piclaw/memory/* /data/openclaw/workspace/
 
 log "OpenClaw configured"
 
@@ -116,7 +116,7 @@ TUNNEL_INSTRUCTIONS
 # ── Lark Webhook Server ──────────────────────────────────────
 section "Lark Webhook Server"
 
-cat > /home/$USER/openclaw-lark/scripts/lark_server.py << 'PYEOF'
+cat > /home/$USER/piclaw/scripts/lark_server.py << 'PYEOF'
 #!/usr/bin/env python3
 """
 Lark Webhook Server for OpenClaw
@@ -220,14 +220,14 @@ if __name__ == "__main__":
     server.serve_forever()
 PYEOF
 
-chmod +x /home/$USER/openclaw-lark/scripts/lark_server.py
+chmod +x /home/$USER/piclaw/scripts/lark_server.py
 log "Lark webhook server created"
 
 # ── Systemd Services ─────────────────────────────────────────
 section "Systemd Services (auto-start on boot)"
 
 # Lark webhook service
-sudo tee /etc/systemd/system/openclaw-lark.service > /dev/null << SERVICE
+sudo tee /etc/systemd/system/piclaw.service > /dev/null << SERVICE
 [Unit]
 Description=OpenClaw Lark Webhook Server
 After=network.target
@@ -236,8 +236,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=/home/$USER/openclaw-lark
-ExecStart=/home/$USER/venv/bin/python3 /home/$USER/openclaw-lark/scripts/lark_server.py
+WorkingDirectory=/home/$USER/piclaw
+ExecStart=/home/$USER/venv/bin/python3 /home/$USER/piclaw/scripts/lark_server.py
 Restart=always
 RestartSec=5
 EnvironmentFile=/home/$USER/.openclaw/.env
@@ -251,16 +251,16 @@ SERVICE
 # Cron jobs
 CRON_JOBS="
 # OpenClaw — French daily questions (8 AM)
-0 8 * * * /home/$USER/venv/bin/python3 /home/$USER/openclaw-lark/scripts/run_skill.py french_coach send_daily_questions >> /data/openclaw/logs/french.log 2>&1
+0 8 * * * /home/$USER/venv/bin/python3 /home/$USER/piclaw/scripts/run_skill.py french_coach send_daily_questions >> /data/openclaw/logs/french.log 2>&1
 
 # OpenClaw — Job scout (Mon/Wed/Fri 9 AM)
-0 9 * * 1,3,5 /home/$USER/venv/bin/python3 /home/$USER/openclaw-lark/scripts/run_skill.py job_scout find_and_report >> /data/openclaw/logs/jobs.log 2>&1
+0 9 * * 1,3,5 /home/$USER/venv/bin/python3 /home/$USER/piclaw/scripts/run_skill.py job_scout find_and_report >> /data/openclaw/logs/jobs.log 2>&1
 
 # OpenClaw — Weekly report (Sunday 10 AM)
-0 10 * * 0 /home/$USER/venv/bin/python3 /home/$USER/openclaw-lark/scripts/run_skill.py reporter send_weekly_summary >> /data/openclaw/logs/report.log 2>&1
+0 10 * * 0 /home/$USER/venv/bin/python3 /home/$USER/piclaw/scripts/run_skill.py reporter send_weekly_summary >> /data/openclaw/logs/report.log 2>&1
 
 # OpenClaw — Compile French notes (Sunday 9 PM)
-0 21 * * 0 /home/$USER/venv/bin/python3 /home/$USER/openclaw-lark/scripts/run_skill.py french_coach compile_weekly_notes >> /data/openclaw/logs/french.log 2>&1
+0 21 * * 0 /home/$USER/venv/bin/python3 /home/$USER/piclaw/scripts/run_skill.py french_coach compile_weekly_notes >> /data/openclaw/logs/french.log 2>&1
 
 # Rotate logs (keep last 7 days)
 0 0 * * * find /data/openclaw/logs -name '*.log' -mtime +7 -delete
@@ -269,7 +269,7 @@ CRON_JOBS="
 (crontab -l 2>/dev/null; echo "$CRON_JOBS") | crontab -
 
 sudo systemctl daemon-reload
-sudo systemctl enable openclaw-lark
+sudo systemctl enable piclaw
 log "Systemd services configured"
 
 # ── Lark App Setup Instructions ──────────────────────────────
@@ -320,7 +320,7 @@ echo "Next steps:"
 echo "  1. Fill in credentials:  nano ~/.openclaw/.env"
 echo "  2. Mount USB SSD:        sudo mount /dev/sda1 /data"
 echo "  3. Setup CF tunnel:      cloudflared tunnel login"
-echo "  4. Start services:       sudo systemctl start openclaw-lark"
+echo "  4. Start services:       sudo systemctl start piclaw"
 echo "  5. Check logs:           tail -f /data/openclaw/logs/webhook.log"
 echo ""
 echo "Files created:"

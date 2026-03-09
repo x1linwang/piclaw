@@ -73,8 +73,8 @@ echo '/dev/sda1 /data ext4 defaults,noatime 0 2' | sudo tee -a /etc/fstab
 
 ### Step 1 — Clone this repo onto Pi
 ```bash
-git clone https://github.com/YOUR_USERNAME/openclaw-lark ~/openclaw-lark
-cd ~/openclaw-lark
+git clone https://github.com/x1linwang/piclaw ~/piclaw
+cd ~/piclaw
 ```
 
 ### Step 2 — Run setup script
@@ -151,8 +151,8 @@ cloudflared tunnel --url http://localhost:8080
 ### Step 6 — Start Services
 
 ```bash
-sudo systemctl start openclaw-lark
-sudo systemctl status openclaw-lark
+sudo systemctl start piclaw
+sudo systemctl status piclaw
 
 # Watch live logs
 tail -f /data/openclaw/logs/webhook.log
@@ -184,7 +184,7 @@ tail -f /data/openclaw/logs/webhook.log
 ## File Structure
 
 ```
-openclaw-lark/
+piclaw/
 ├── config/
 │   ├── openclaw.config.yaml     # Main agent config
 │   ├── .env.template            # Copy → ~/.openclaw/.env
@@ -224,7 +224,7 @@ Well within your $10/month target. 🎯
 **Webhook not receiving events:**
 ```bash
 # Check server is running
-sudo systemctl status openclaw-lark
+sudo systemctl status piclaw
 # Check tunnel is up
 cloudflared tunnel info openclaw
 # Test endpoint
