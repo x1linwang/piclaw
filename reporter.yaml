@@ -1,0 +1,127 @@
+# ============================================================
+# Skill: Reporter
+# Purpose: Weekly summary card — French + Job progress
+# ============================================================
+
+name: reporter
+version: "1.0"
+
+system_prompt: |
+  You create concise, motivating weekly progress reports.
+  Be honest about progress without being discouraging.
+  Celebrate wins, acknowledge gaps, suggest specific next steps.
+
+actions:
+
+  send_weekly_summary:
+    description: Compile and send Sunday weekly report
+    steps:
+      - load_memory: french/PROGRESS.md
+      - load_memory: jobs/APPLICATIONS.md
+      - load_memory: MEMORY.md
+      - llm_call:
+          prompt: |
+            Generate a weekly summary report.
+
+            French progress this week:
+            <french>{{french_weekly_sessions}}</french>
+
+            Job search this week:
+            <jobs>{{job_weekly_activity}}</jobs>
+
+            Overall profile:
+            <profile>{{user_profile}}</profile>
+
+            Return JSON:
+            {
+              "french": {
+                "sessions_completed": 0,
+                "avg_score": 0,
+                "streak": 0,
+                "level_progress": "description",
+                "top_win": "best thing this week",
+                "focus_next_week": "specific grammar/vocab target",
+                "b1_eta_weeks": 0
+              },
+              "jobs": {
+                "new_matches_found": 0,
+                "applications_sent": 0,
+                "applications_pending": 0,
+                "interviews": 0,
+                "highlight": "best opportunity this week"
+              },
+              "motivation_message": "personalized weekly message",
+              "express_entry_note": "any CRS-relevant update"
+            }
+          model: moonshot-v1-8k
+          response_format: json
+      - send_lark_card:
+          template: weekly_report_card
+
+lark_cards:
+
+  weekly_report_card:
+    template: |
+      {
+        "config": { "wide_screen_mode": true },
+        "header": {
+          "template": "purple",
+          "title": {
+            "content": "📊 Weekly Report — Week of {{week_start}}",
+            "tag": "plain_text"
+          }
+        },
+        "elements": [
+          {
+            "tag": "column_set",
+            "flex_mode": "bisect",
+            "columns": [
+              {
+                "tag": "column",
+                "elements": [{
+                  "tag": "div",
+                  "text": {
+                    "tag": "lark_md",
+                    "content": "🇫🇷 **French**\n📅 {{french.sessions_completed}}/7 sessions\n⭐ Avg score: {{french.avg_score}}/10\n🔥 Streak: {{french.streak}} days\n📈 {{french.level_progress}}\n\n**Next week:** {{french.focus_next_week}}\n\n⏱️ B1 ETA: ~{{french.b1_eta_weeks}} weeks"
+                  }
+                }]
+              },
+              {
+                "tag": "column",
+                "elements": [{
+                  "tag": "div",
+                  "text": {
+                    "tag": "lark_md",
+                    "content": "💼 **Jobs**\n🔍 New matches: {{jobs.new_matches_found}}\n📤 Applied: {{jobs.applications_sent}}\n⏳ Pending: {{jobs.applications_pending}}\n🎤 Interviews: {{jobs.interviews}}\n\n**Best opportunity:**\n{{jobs.highlight}}"
+                  }
+                }]
+              }
+            ]
+          },
+          { "tag": "hr" },
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "💬 {{motivation_message}}\n\n🇨🇦 **Express Entry:** {{express_entry_note}}"
+            }
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "📚 View French Notes" },
+                "type": "default",
+                "value": { "action": "open_french_notes" }
+              },
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "📋 Job Tracker" },
+                "type": "default",
+                "value": { "action": "open_job_tracker" }
+              }
+            ]
+          }
+        ]
+      }

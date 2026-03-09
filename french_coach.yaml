@@ -1,0 +1,236 @@
+# ============================================================
+# Skill: French Coach
+# Purpose: Daily French practice, progress tracking, B1 goal
+# ============================================================
+
+name: french_coach
+version: "1.0"
+description: >
+  Tracks user's French learning progress toward DELF B1
+  certification. Sends daily practice questions, grades answers,
+  compiles notes, and projects Express Entry CRS readiness.
+
+# ── System Prompt ───────────────────────────────────────────
+system_prompt: |
+  You are Aria, a warm and encouraging French language coach
+  specializing in helping learners reach DELF B1 level for
+  Canadian Express Entry immigration purposes.
+
+  You deeply understand the CECR framework (A1→A2→B1→B2) and
+  the specific competencies tested in DELF B1:
+  - Compréhension de l'oral (Listening)
+  - Compréhension des écrits (Reading)
+  - Production écrite (Writing)
+  - Production orale (Speaking — simulated via text)
+
+  You track the user's weak areas, celebrate streaks, and adapt
+  question difficulty dynamically. You are encouraging but honest
+  about where the user stands vs B1 requirements.
+
+  Always respond in English unless specifically practicing French.
+  When grading, explain WHY an answer is wrong in a memorable way.
+
+  Current user profile is provided in <memory> tags.
+
+# ── Actions ─────────────────────────────────────────────────
+actions:
+
+  send_daily_questions:
+    description: Generate and send today's practice card to Lark
+    steps:
+      - load_memory: french/PROGRESS.md
+      - llm_call:
+          prompt: |
+            Based on this progress data: <memory>{{french_progress}}</memory>
+
+            Generate exactly 5 practice questions for today.
+            Distribution rules:
+            - 2 questions targeting the user's WEAKEST area
+            - 1 grammar question (current topic in syllabus)
+            - 1 vocabulary question
+            - 1 reading comprehension (short paragraph, 3-4 sentences)
+
+            Today's date: {{today}}
+            Current streak: {{streak}} days
+            Estimated level: {{current_level}}
+
+            Return as JSON:
+            {
+              "questions": [
+                {
+                  "id": 1,
+                  "type": "grammar|vocab|reading|listening_sim",
+                  "topic": "topic name",
+                  "question": "...",
+                  "hint": "optional hint",
+                  "expected_answer": "...",
+                  "explanation": "why this matters for B1"
+                }
+              ],
+              "todays_tip": "one motivating tip or grammar rule",
+              "streak_message": "personalized streak encouragement"
+            }
+          model: moonshot-v1-8k          # Cheaper model fine for this
+          response_format: json
+      - send_lark_card:
+          template: french_daily_card
+      - save_state:
+          key: "pending_answers_{{today}}"
+
+  grade_answers:
+    description: Grade user's submitted answers, update progress
+    trigger: lark_card_callback
+    steps:
+      - load_state: "pending_answers_{{today}}"
+      - llm_call:
+          prompt: |
+            Grade these French practice answers:
+
+            Questions: <questions>{{pending_questions}}</questions>
+            User answers: <answers>{{user_answers}}</answers>
+
+            For each question provide:
+            - correct: true/false
+            - score: 0-2 (0=wrong, 1=partially correct, 2=perfect)
+            - feedback: specific, educational explanation
+            - correction: the correct answer if wrong
+
+            Also assess:
+            - overall_score: X/10
+            - level_assessment: "still A2" | "A2+" | "approaching B1" | "B1 ready"
+            - weakest_area: grammar|vocab|reading|writing
+            - encouragement: personalized message
+
+            Return as JSON.
+          model: moonshot-v1-8k
+          response_format: json
+      - send_lark_card:
+          template: french_results_card
+      - update_memory:
+          file: french/PROGRESS.md
+          action: append_session
+
+  compile_weekly_notes:
+    description: Compile week's learning into structured Lark Doc
+    steps:
+      - load_memory: french/NOTES.md
+      - load_memory: french/PROGRESS.md
+      - llm_call:
+          prompt: |
+            Compile this week's French learning sessions into a
+            beautiful structured study note.
+
+            Sessions data: <sessions>{{weekly_sessions}}</sessions>
+            Existing notes: <notes>{{existing_notes}}</notes>
+
+            Create a structured Markdown document with:
+            1. This Week's Grammar Points (with examples)
+            2. New Vocabulary (grouped by theme)
+            3. Common Mistakes to Remember
+            4. B1 Progress Update
+            5. Focus Areas for Next Week
+
+            Make it scannable and memorable.
+          model: moonshot-v1-128k
+      - update_lark_doc:
+          doc_title: "French Learning Journal — {{user_name}}"
+          section: "Week of {{week_start}}"
+      - send_lark_message:
+          text: "📚 Your weekly French notes have been compiled! Check your Lark Doc."
+
+# ── Lark Card Templates ─────────────────────────────────────
+lark_cards:
+
+  french_daily_card:
+    # Lark Interactive Card JSON
+    # Uses Lark Card Builder schema v2
+    template: |
+      {
+        "config": {
+          "wide_screen_mode": true,
+          "enable_forward": false
+        },
+        "header": {
+          "template": "blue",
+          "title": {
+            "content": "🇫🇷 French Practice — Day {{streak}} 🔥",
+            "tag": "plain_text"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "**Level:** {{current_level}} → **Target:** B1 | **Today's tip:** {{todays_tip}}"
+            }
+          },
+          { "tag": "hr" },
+          {{#each questions}}
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "**Q{{id}} ({{type}}):** {{question}}\n{{#if hint}}💡 *Hint: {{hint}}*{{/if}}"
+            }
+          },
+          {{/each}}
+          { "tag": "hr" },
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "📝 Type your answers below as:\n`1. [answer] | 2. [answer] | 3. [answer] | 4. [answer] | 5. [answer]`"
+            }
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "✅ Submit Answers" },
+                "type": "primary",
+                "value": { "action": "submit_answers", "session_id": "{{session_id}}" }
+              },
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "⏭️ Skip Today" },
+                "type": "default",
+                "value": { "action": "skip_day", "session_id": "{{session_id}}" }
+              }
+            ]
+          }
+        ]
+      }
+
+  french_results_card:
+    template: |
+      {
+        "config": { "wide_screen_mode": true },
+        "header": {
+          "template": "{{#if passed}}green{{else}}orange{{/if}}",
+          "title": {
+            "content": "{{overall_score}}/10 — {{level_assessment}}",
+            "tag": "plain_text"
+          }
+        },
+        "elements": [
+          {{#each results}}
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "{{#if correct}}✅{{else}}❌{{/if}} **Q{{id}}:** {{feedback}}{{#unless correct}}\n✏️ *Correct: {{correction}}*{{/unless}}"
+            }
+          },
+          {{/each}}
+          { "tag": "hr" },
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "💬 {{encouragement}}\n\n📊 **Weakest area this week:** {{weakest_area}}"
+            }
+          }
+        ]
+      }

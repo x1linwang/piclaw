@@ -1,0 +1,119 @@
+# ============================================================
+# OpenClaw Configuration — Lark (US Feishu) Edition
+# Hardware: Raspberry Pi 5 16GB
+# ============================================================
+
+agent:
+  name: "Aria"                        # Your agent's display name in Lark
+  version: "1.0.0"
+  timezone: "America/Toronto"         # Adjust to user's timezone
+  language: "en"
+
+# ── LLM Provider Configuration ──────────────────────────────
+llm:
+  primary:
+    provider: moonshot
+    model: moonshot-v1-128k            # Kimi K2.5 / Moonshot flagship
+    api_key: "${MOONSHOT_API_KEY}"
+    max_tokens: 4096
+    temperature: 0.3                   # Lower = more consistent for tasks
+    context_window: 128000
+
+  fallback:
+    provider: deepseek
+    model: deepseek-chat               # DeepSeek V3 via OpenRouter
+    api_key: "${DEEPSEEK_API_KEY}"
+    max_tokens: 4096
+    temperature: 0.3
+
+  # Use cheaper/faster model for simple classification tasks
+  router:
+    provider: moonshot
+    model: moonshot-v1-8k
+    api_key: "${MOONSHOT_API_KEY}"
+
+# ── Memory Configuration ────────────────────────────────────
+memory:
+  backend: markdown
+  base_path: "/data/openclaw/workspace"   # USB SSD mount path
+  files:
+    profile: "MEMORY.md"
+    french_progress: "french/PROGRESS.md"
+    french_notes: "french/NOTES.md"
+    job_profile: "jobs/PROFILE.md"
+    job_applications: "jobs/APPLICATIONS.md"
+  vector_search:
+    enabled: true
+    model: "all-MiniLM-L6-v2"            # Lightweight, runs on Pi
+
+# ── I/O: Lark Bot ───────────────────────────────────────────
+io:
+  provider: lark
+  app_id: "${LARK_APP_ID}"
+  app_secret: "${LARK_APP_SECRET}"
+  verification_token: "${LARK_VERIFICATION_TOKEN}"
+  encrypt_key: "${LARK_ENCRYPT_KEY}"     # Optional but recommended
+  webhook:
+    port: 8080
+    path: "/webhook/lark"
+    # Expose via Cloudflare Tunnel — see tunnel.yaml
+  features:
+    interactive_cards: true
+    bitable_sync: true                   # Sync job tracker to Lark Bitable
+    docs_integration: true               # French notes → Lark Docs
+
+# ── Scheduler ───────────────────────────────────────────────
+scheduler:
+  backend: cron                          # Uses system cron on Pi
+  jobs:
+    french_daily:
+      cron: "0 8 * * *"                  # 8:00 AM daily
+      skill: french_coach
+      action: send_daily_questions
+
+    job_scout:
+      cron: "0 9 * * 1,3,5"             # Mon/Wed/Fri 9 AM
+      skill: job_scout
+      action: find_and_report
+
+    weekly_report:
+      cron: "0 10 * * 0"                 # Sunday 10 AM
+      skill: reporter
+      action: send_weekly_summary
+
+    french_notes_compile:
+      cron: "0 21 * * 0"                 # Sunday 9 PM
+      skill: french_coach
+      action: compile_weekly_notes
+
+# ── Skills Registry ─────────────────────────────────────────
+skills:
+  - name: resume_parser
+    path: "./skills/resume_parser.yaml"
+    triggers: ["resume", "cv", "upload"]
+
+  - name: job_scout
+    path: "./skills/job_scout.yaml"
+    triggers: ["find jobs", "job search", "positions"]
+
+  - name: job_applicant
+    path: "./skills/job_applicant.yaml"
+    triggers: ["apply", "application", "submit"]
+
+  - name: french_coach
+    path: "./skills/french_coach.yaml"
+    triggers: ["french", "bonjour", "b1", "practice"]
+
+  - name: reporter
+    path: "./skills/reporter.yaml"
+    triggers: ["report", "summary", "progress"]
+
+# ── Cost Controls ───────────────────────────────────────────
+cost:
+  monthly_budget_usd: 10
+  alert_threshold_usd: 8
+  token_tracking: true
+  prefer_8k_model_for:
+    - classification
+    - short_qa
+    - grading

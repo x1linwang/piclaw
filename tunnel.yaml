@@ -1,0 +1,41 @@
+# ============================================================
+# Cloudflare Tunnel Config
+# Path: ~/.cloudflared/config.yml
+# ============================================================
+# Setup steps:
+#   1. cloudflared tunnel login
+#   2. cloudflared tunnel create openclaw
+#   3. Fill in tunnel-id below
+#   4. cloudflared tunnel route dns openclaw your-domain.com
+#   5. sudo cloudflared service install
+#   6. sudo systemctl start cloudflared
+
+tunnel: YOUR_TUNNEL_ID_HERE
+credentials-file: /home/pi/.cloudflared/YOUR_TUNNEL_ID_HERE.json
+
+ingress:
+  # Lark webhook endpoint
+  - hostname: aria.your-domain.com      # Replace with your domain
+    service: http://localhost:8080
+
+  # Catch-all (required by cloudflared)
+  - service: http_status:404
+
+# ============================================================
+# Cloudflare Tunnel Quick Reference
+# ============================================================
+#
+# Check tunnel status:
+#   cloudflared tunnel info openclaw
+#
+# Test locally:
+#   curl http://localhost:8080/webhook/lark
+#
+# View tunnel logs:
+#   sudo journalctl -u cloudflared -f
+#
+# Free alternative (no domain needed):
+#   cloudflared tunnel --url http://localhost:8080
+#   → gives you a random *.trycloudflare.com URL
+#   → update Lark webhook URL each restart
+#   → fine for testing, not production

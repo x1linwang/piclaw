@@ -1,0 +1,366 @@
+# ============================================================
+# Skill: Resume Parser
+# Purpose: Extract structured profile from uploaded resume
+# ============================================================
+
+name: resume_parser
+version: "1.0"
+
+system_prompt: |
+  You are a precise resume parsing engine. Extract all
+  information accurately. If something is ambiguous, flag it
+  for the user to clarify rather than guessing.
+
+actions:
+
+  parse_resume:
+    description: Parse uploaded resume file into structured profile
+    trigger: file_upload            # User uploads PDF/DOCX in Lark
+    steps:
+      - extract_file_content:
+          supported_formats: [pdf, docx, txt]
+      - llm_call:
+          prompt: |
+            Parse this resume and extract ALL information into
+            structured JSON. Be thorough and precise.
+
+            Resume content:
+            <resume>{{file_content}}</resume>
+
+            Return JSON matching this exact schema:
+            {
+              "personal": {
+                "full_name": "",
+                "email": "",
+                "phone": "",
+                "location": "",
+                "linkedin": "",
+                "github": "",
+                "website": ""
+              },
+              "summary": "",
+              "experience": [
+                {
+                  "company": "",
+                  "title": "",
+                  "location": "",
+                  "start_date": "YYYY-MM",
+                  "end_date": "YYYY-MM or present",
+                  "responsibilities": [],
+                  "achievements": [],
+                  "tech_stack": []
+                }
+              ],
+              "education": [
+                {
+                  "institution": "",
+                  "degree": "",
+                  "field": "",
+                  "graduation_year": "",
+                  "gpa": "",
+                  "honors": []
+                }
+              ],
+              "skills": {
+                "technical": [],
+                "soft": [],
+                "languages": [
+                  { "language": "", "level": "native|C2|C1|B2|B1|A2|A1" }
+                ],
+                "certifications": []
+              },
+              "projects": [],
+              "volunteer": [],
+              "ambiguities": []
+            }
+          model: moonshot-v1-128k    # Needs long context for full resume
+          response_format: json
+      - save_memory:
+          file: jobs/PROFILE.md
+          format: structured_markdown
+      - send_lark_card:
+          template: resume_confirm_card
+      - log: "Resume parsed and profile saved"
+
+lark_cards:
+
+  resume_confirm_card:
+    template: |
+      {
+        "config": { "wide_screen_mode": true },
+        "header": {
+          "template": "green",
+          "title": { "content": "✅ Resume Parsed Successfully", "tag": "plain_text" }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "**Name:** {{personal.full_name}}\n**Current Role:** {{experience.0.title}} @ {{experience.0.company}}\n**Location:** {{personal.location}}\n**Languages:** {{skills.languages | join}}"
+            }
+          },
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "**Experience:** {{experience | length}} roles parsed\n**Skills:** {{skills.technical | length}} technical skills found\n**Education:** {{education.0.degree}} from {{education.0.institution}}"
+            }
+          },
+          {{#if ambiguities}}
+          { "tag": "hr" },
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "⚠️ **Please clarify:**\n{{#each ambiguities}}- {{this}}\n{{/each}}"
+            }
+          },
+          {{/if}}
+          { "tag": "hr" },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "✅ Profile Looks Good" },
+                "type": "primary",
+                "value": { "action": "confirm_profile" }
+              },
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "✏️ Edit Profile" },
+                "type": "default",
+                "value": { "action": "edit_profile" }
+              }
+            ]
+          }
+        ]
+      }
+
+---
+# ============================================================
+# Skill: Job Scout
+# Purpose: Find matching positions, score them, present for approval
+# ============================================================
+
+name: job_scout
+version: "1.0"
+
+system_prompt: |
+  You are a strategic career advisor and job matching engine.
+  You understand what makes a strong job-candidate fit and can
+  accurately assess match quality. You focus on roles that
+  genuinely match the candidate's profile — no spam.
+
+  For Canadian Express Entry candidates, you also flag roles
+  that could improve CRS scores (NOC codes with high demand,
+  provincial nominee programs, etc.)
+
+actions:
+
+  find_and_report:
+    description: Search for jobs, score matches, send Lark cards
+    steps:
+      - load_memory: jobs/PROFILE.md
+      - search_jobs:
+          sources:
+            - provider: adzuna
+              params:
+                country: ca                # Canada focus
+                what: "{{profile.skills.technical | top5}}"
+                where: "{{profile.personal.location}}"
+                max_results: 50
+            - provider: adzuna
+              params:
+                country: us
+                what: "{{profile.skills.technical | top5}}"
+                max_results: 30
+      - llm_call:
+          prompt: |
+            Score each job listing against this candidate profile.
+
+            Profile: <profile>{{profile}}</profile>
+
+            Job listings: <jobs>{{raw_jobs}}</jobs>
+
+            For each job, return:
+            {
+              "job_id": "",
+              "company": "",
+              "title": "",
+              "location": "",
+              "salary_range": "",
+              "match_score": 0-100,
+              "match_reasons": [],
+              "concerns": [],
+              "express_entry_relevance": "high|medium|low|none",
+              "apply_url": ""
+            }
+
+            Only include jobs with match_score >= 65.
+            Sort by match_score descending.
+            Max 5 results per run to avoid overwhelming the user.
+
+            Return as JSON array.
+          model: moonshot-v1-128k
+          response_format: json
+      - for_each: matched_jobs
+        send_lark_card:
+          template: job_match_card
+      - update_memory:
+          file: jobs/APPLICATIONS.md
+          action: log_new_matches
+
+  draft_application:
+    description: Draft cover letter and fill application fields
+    trigger: lark_card_callback
+    condition: "action == 'apply_now'"
+    steps:
+      - load_memory: jobs/PROFILE.md
+      - load_job_details: "{{job_id}}"
+      - llm_call:
+          prompt: |
+            Write a tailored cover letter for this application.
+
+            Candidate profile: <profile>{{profile}}</profile>
+            Job details: <job>{{job_details}}</job>
+
+            Requirements:
+            - Professional but warm tone
+            - Highlight top 3 matching skills with specific examples
+            - Address any obvious gaps proactively
+            - Mention Express Entry/Canadian immigration goals
+              only if appropriate for the role
+            - Max 4 paragraphs, ~300 words
+            - End with a clear call to action
+
+            Also fill in standard application fields:
+            {
+              "cover_letter": "",
+              "why_this_company": "",
+              "relevant_experience_summary": "",
+              "years_of_experience": "",
+              "availability": "",
+              "salary_expectation": "{{profile.salary_target}}"
+            }
+          model: moonshot-v1-128k
+          response_format: json
+      - send_lark_card:
+          template: application_draft_card
+
+lark_cards:
+
+  job_match_card:
+    template: |
+      {
+        "config": { "wide_screen_mode": true },
+        "header": {
+          "template": "{{#if high_match}}green{{else}}blue{{/if}}",
+          "title": {
+            "content": "{{match_score}}% Match — {{title}} @ {{company}}",
+            "tag": "plain_text"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "📍 {{location}}  💰 {{salary_range}}  🇨🇦 Express Entry: {{express_entry_relevance}}"
+            }
+          },
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "**Why it matches:**\n{{#each match_reasons}}• {{this}}\n{{/each}}"
+            }
+          },
+          {{#if concerns}}
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "**Heads up:**\n{{#each concerns}}⚠️ {{this}}\n{{/each}}"
+            }
+          },
+          {{/if}}
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "✅ Apply — Draft for Me" },
+                "type": "primary",
+                "value": { "action": "apply_now", "job_id": "{{job_id}}" }
+              },
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "👀 View Posting" },
+                "type": "default",
+                "url": "{{apply_url}}"
+              },
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "❌ Skip" },
+                "type": "danger",
+                "value": { "action": "skip_job", "job_id": "{{job_id}}" }
+              }
+            ]
+          }
+        ]
+      }
+
+  application_draft_card:
+    template: |
+      {
+        "config": { "wide_screen_mode": true },
+        "header": {
+          "template": "orange",
+          "title": {
+            "content": "📋 Application Draft Ready — {{company}}",
+            "tag": "plain_text"
+          }
+        },
+        "elements": [
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "**Cover Letter Preview:**\n\n{{cover_letter | truncate(300)}}\n\n*[Full draft saved to Lark Doc]*"
+            }
+          },
+          { "tag": "hr" },
+          {
+            "tag": "div",
+            "text": {
+              "tag": "lark_md",
+              "content": "⚠️ **Review before submitting.** I've prepared everything — you submit manually at:\n{{apply_url}}"
+            }
+          },
+          {
+            "tag": "action",
+            "actions": [
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "📄 Open Full Draft" },
+                "type": "primary",
+                "url": "{{lark_doc_url}}"
+              },
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "🔗 Go to Application" },
+                "type": "default",
+                "url": "{{apply_url}}"
+              },
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "✏️ Regenerate Draft" },
+                "type": "default",
+                "value": { "action": "regenerate_draft", "job_id": "{{job_id}}" }
+              }
+            ]
+          }
+        ]
+      }
